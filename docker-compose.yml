@@ -1,0 +1,13 @@
+# Local run against real AWS (uses your AWS credentials from the environment).
+services:
+  cloudvault:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports: ["8000:8000"]
+    environment:
+      S3_BUCKET: ${S3_BUCKET}
+      DDB_TABLE: ${DDB_TABLE:-cloudvault-files}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}

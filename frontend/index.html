@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CloudVault</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --ink:#e2e8f0; --mute:#94a3b8; --acc:#38bdf8; --bad:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  h1 { margin: 0 0 4px; } p.sub { color:var(--mute); margin:0 0 20px; }
+  .card { background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; }
+  button { background:var(--acc); color:#0b1220; border:0; border-radius:8px; padding:8px 12px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--mute); }
+  button.danger { background:var(--bad); }
+  select, input[type=file] { color:var(--ink); }
+  select { background:var(--bg); border:1px solid var(--mute); border-radius:6px; padding:6px; }
+  ul { list-style:none; padding:0; margin:0; }
+  li { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid #334155; }
+  li:last-child { border-bottom:0; }
+  .meta { color:var(--mute); font-size:13px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  #msg { min-height:20px; color:var(--acc); font-size:14px; word-break:break-all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>CloudVault</h1>
+  <p class="sub">Upload to Amazon S3, share with a link that expires.</p>
+
+  <div class="card">
+    <div class="row">
+      <input id="file" type="file">
+      <button id="up">Upload</button>
+    </div>
+    <p id="msg" role="status"></p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Your files</h2>
+    <ul id="list"></ul>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const say = (t) => { $("msg").textContent = t; };
+const fmt = (n) => n > 1048576 ? (n/1048576).toFixed(1)+" MB" : (n/1024).toFixed(1)+" KB";
+
+async function load() {
+  const res = await fetch("/api/files");
+  const files = await res.json();
+  const ul = $("list");
+  ul.innerHTML = "";
+  if (!files.length) { ul.innerHTML = '<li class="meta">No files yet.</li>'; return; }
+  for (const f of files) {
+    const li = document.createElement("li");
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = f.name;
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = fmt(f.size) + " · " + new Date(f.uploaded_at * 1000).toLocaleString();
+    info.append(name, meta);
+
+    const row = document.createElement("div");
+    row.className = "row";
+    const sel = document.createElement("select");
+    [["15 minutes",900],["1 hour",3600],["1 day",86400],["7 days",604800]].forEach(([l,v]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = l; sel.append(o);
+    });
+    const link = document.createElement("button"); link.textContent = "Get link";
+    link.onclick = async () => {
+      const r = await fetch(`/api/files/${f.file_id}/link?ttl=${sel.value}`, { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) return say(d.detail || "Failed");
+      try { await navigator.clipboard.writeText(d.url); say("Link copied. Expires in " + d.expires_in + "s."); }
+      catch { say(d.url); }
+    };
+    const del = document.createElement("button"); del.textContent = "Delete"; del.className = "danger";
+    del.onclick = async () => { await fetch(`/api/files/${f.file_id}`, { method: "DELETE" }); load(); };
+    row.append(sel, link, del);
+    li.append(info, row);
+    ul.append(li);
+  }
+}
+
+$("up").onclick = async () => {
+  const file = $("file").files[0];
+  if (!file) return say("Choose a file first.");
+  const fd = new FormData(); fd.append("file", file);
+  say("Uploading...");
+  const r = await fetch("/api/files", { method: "POST", body: fd });
+  const d = await r.json();
+  say(r.ok ? "Uploaded " + d.name : (d.detail || "Upload failed"));
+  $("file").value = "";
+  load();
+};
+load();
+</script>
+</body>
+</html>

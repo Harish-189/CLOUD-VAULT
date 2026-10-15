@@ -1,0 +1,28 @@
+name: Deploy to AWS
+
+# Redeploys the container on the EC2 instance via SSM after CI passes on main.
+# Repo secrets needed: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+# Repo variable needed: INSTANCE_ID (from `terraform output`/AWS console)
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+      - name: Pull latest code and restart container
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ vars.INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=["cd /opt/app && git pull && docker build -f backend/Dockerfile -t cloudvault . && docker restart cloudvault"]'
